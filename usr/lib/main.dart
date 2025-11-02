@@ -1,4 +1,7 @@
+import 'package:couldai_user_app/integrations/supabase.dart';
 import 'package:couldai_user_app/screens/auth/login_screen.dart';
+import 'package:couldai_user_app/screens/home_screen.dart';
+import 'package:couldai_user_app/screens/onboarding_screen.dart';
 import 'package:couldai_user_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';

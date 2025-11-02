@@ -11,6 +11,7 @@ class MyPlantsScreen extends StatefulWidget {
 
 class _MyPlantsScreenState extends State<MyPlantsScreen> {
   List<Map<String, dynamic>> _plants = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -19,11 +20,20 @@ class _MyPlantsScreenState extends State<MyPlantsScreen> {
   }
 
   Future<void> _fetchPlants() async {
-    final userId = Supabase.instance.client.auth.currentUser!.id;
-    final response = await Supabase.instance.client.from('plants').select('*').eq('owner_id', userId);
-    setState(() {
-      _plants = List<Map<String, dynamic>>.from(response);
-    });
+    setState(() => _isLoading = true);
+    try {
+      final userId = Supabase.instance.client.auth.currentUser!.id;
+      final response = await Supabase.instance.client.from('plants').select('*').eq('owner_id', userId);
+      setState(() {
+        _plants = List<Map<String, dynamic>>.from(response);
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error fetching plants: $e")));
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -38,26 +48,50 @@ class _MyPlantsScreenState extends State<MyPlantsScreen> {
           ),
         ],
       ),
-      body: _plants.isEmpty
-          ? const Center(child: Text('No plants yet. Scan a QR to adopt!'))
-          : GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2),
-              itemCount: _plants.length,
-              itemBuilder: (context, index) {
-                final plant = _plants[index];
-                return Card(
-                  margin: const EdgeInsets.all(8),
-                  child: Column(
-                    children: [
-                      Image.network(plant['image'] ?? 'https://via.placeholder.com/150', height: 100),
-                      Text(plant['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                      Text('Mood: ${plant['mood']} ${plant['emoji']}'),
-                      Text('Level: ${plant['growth_level']}'),
-                    ],
-                  ).animate().scale(duration: 300.ms),
-                ).onTap(() => _viewPlantProfile(plant));
-              },
-            ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _plants.isEmpty
+              ? const Center(child: Text('No plants yet. Scan a QR to adopt!'))
+              : GridView.builder(
+                  padding: const EdgeInsets.all(8),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                  ),
+                  itemCount: _plants.length,
+                  itemBuilder: (context, index) {
+                    final plant = _plants[index];
+                    return InkWell(
+                      onTap: () => _viewPlantProfile(plant),
+                      child: Card(
+                        clipBehavior: Clip.antiAlias,
+                        margin: EdgeInsets.zero,
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: Image.network(
+                                plant['image'] ?? 'https://via.placeholder.com/150',
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Column(
+                                children: [
+                                  Text(plant['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  Text('Mood: ${plant['mood']} ${plant['emoji']}'),
+                                  Text('Level: ${plant['growth_level']}'),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ).animate().scale(duration: 300.ms);
+                  },
+                ),
     );
   }
 
@@ -70,18 +104,23 @@ class _MyPlantsScreenState extends State<MyPlantsScreen> {
         content: TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Plant Name')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: () async {
-            await Supabase.instance.client.from('plants').insert({
-              'name': nameController.text,
-              'owner_id': Supabase.instance.client.auth.currentUser!.id,
-              'mood': 'Happy',
-              'emoji': '😊',
-              'growth_level': 1,
-              'image': 'https://via.placeholder.com/150',
-            });
-            _fetchPlants();
-            Navigator.pop(context);
-          }, child: const Text('Add')),
+          TextButton(
+              onPressed: () async {
+                final name = nameController.text;
+                if (name.isNotEmpty) {
+                  await Supabase.instance.client.from('plants').insert({
+                    'name': name,
+                    'owner_id': Supabase.instance.client.auth.currentUser!.id,
+                    'mood': 'Happy',
+                    'emoji': '😊',
+                    'growth_level': 1,
+                    'image': 'https://via.placeholder.com/150',
+                  });
+                  _fetchPlants();
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Add')),
         ],
       ),
     );
@@ -106,10 +145,14 @@ class PlantProfileScreen extends StatelessWidget {
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Image.network(plant['image'], height: 200),
-            Text('Mood: ${plant['mood']} ${plant['emoji']}', style: const TextStyle(fontSize: 20)),
-            Text('Growth Level: ${plant['growth_level']}'),
+            const SizedBox(height: 16),
+            Text('Mood: ${plant['mood']} ${plant['emoji']}', style: const TextStyle(fontSize: 20), textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            Text('Growth Level: ${plant['growth_level']}', textAlign: TextAlign.center),
+            const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () => _careForPlant(context),
               child: const Text('Care for Plant'),

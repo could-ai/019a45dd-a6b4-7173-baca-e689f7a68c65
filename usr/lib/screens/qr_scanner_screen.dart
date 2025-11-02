@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class QrScannerScreen extends StatefulWidget {
@@ -13,6 +12,7 @@ class QrScannerScreen extends StatefulWidget {
 class _QrScannerScreenState extends State<QrScannerScreen> {
   CameraController? _controller;
   List<CameraDescription>? _cameras;
+  bool _isCameraInitialized = false;
   bool _isScanning = false;
 
   @override
@@ -22,11 +22,18 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   }
 
   Future<void> _initializeCamera() async {
-    _cameras = await availableCameras();
-    if (_cameras!.isNotEmpty) {
-      _controller = CameraController(_cameras![0], ResolutionPreset.medium);
-      await _controller!.initialize();
-      setState(() {});
+    try {
+      _cameras = await availableCameras();
+      if (_cameras!.isNotEmpty) {
+        _controller = CameraController(_cameras![0], ResolutionPreset.medium);
+        await _controller!.initialize();
+        setState(() {
+          _isCameraInitialized = true;
+        });
+      }
+    } catch (e) {
+      // Handle camera initialization error
+      print("Error initializing camera: $e");
     }
   }
 
@@ -47,16 +54,24 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   }
 
   Future<void> _adoptPlant(String plantId) async {
-    await Supabase.instance.client.from('plants').insert({
-      'name': 'New Plant',
-      'owner_id': Supabase.instance.client.auth.currentUser!.id,
-      'qr_code': plantId,
-      'mood': 'Excited',
-      'emoji': '🌱',
-      'growth_level': 1,
-      'image': 'https://via.placeholder.com/150',
-    });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Plant adopted!')));
+    try {
+      await Supabase.instance.client.from('plants').insert({
+        'name': 'New Plant',
+        'owner_id': Supabase.instance.client.auth.currentUser!.id,
+        'qr_code': plantId,
+        'mood': 'Excited',
+        'emoji': '🌱',
+        'growth_level': 1,
+        'image': 'https://via.placeholder.com/150',
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Plant adopted!')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to adopt plant: $e")));
+      }
+    }
   }
 
   @override
@@ -65,11 +80,17 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       appBar: AppBar(title: const Text('Scan a Plant')),
       body: Column(
         children: [
-          if (_controller != null && _controller!.value.isInitialized)
-            CameraPreview(_controller!),
-          ElevatedButton(
-            onPressed: _scanQr,
-            child: Text(_isScanning ? 'Scanning...' : 'Scan QR'),
+          Expanded(
+            child: _isCameraInitialized
+                ? CameraPreview(_controller!)
+                : const Center(child: CircularProgressIndicator()),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: ElevatedButton(
+              onPressed: _isCameraInitialized ? _scanQr : null,
+              child: Text(_isScanning ? 'Scanning...' : 'Scan QR'),
+            ),
           ),
         ],
       ),
